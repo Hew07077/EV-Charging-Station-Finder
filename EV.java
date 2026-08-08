@@ -1,18 +1,23 @@
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.*;
 import java.util.*;
 import java.util.List;
 
 public class SELEVNetSystem {
 
-    // Structure representing an EV Station Node
+    // Structure representing an EV Station Node with Real-World Coordinates
     static class Station {
         int id;
         String name;
+        double lat;
+        double lon;
 
-        public Station(int id, String name) {
+        public Station(int id, String name, double lat, double lon) {
             this.id = id;
             this.name = name;
+            this.lat = lat;
+            this.lon = lon;
         }
     }
 
@@ -20,17 +25,66 @@ public class SELEVNetSystem {
     static class EVGraph {
         private final Map<Integer, Station> stationMap = new HashMap<>();
         private final Map<Integer, List<Integer>> adjacencyList = new HashMap<>();
+        private int nextAutoId = 1;
 
-        public void addStation(int id, String name) {
-            stationMap.put(id, new Station(id, name));
+        public void addStation(int id, String name, double lat, double lon) {
+            stationMap.put(id, new Station(id, name, lat, lon));
             adjacencyList.putIfAbsent(id, new ArrayList<>());
+            if (id >= nextAutoId) {
+                nextAutoId = id + 1;
+            }
+        }
+
+        public int addStation(String name, double lat, double lon) {
+            int id = nextAutoId++;
+            stationMap.put(id, new Station(id, name, lat, lon));
+            adjacencyList.putIfAbsent(id, new ArrayList<>());
+            return id;
+        }
+
+        public boolean removeStation(int targetId) {
+            if (!stationMap.containsKey(targetId)) return false;
+
+            stationMap.remove(targetId);
+            adjacencyList.remove(targetId);
+            for (List<Integer> neighbors : adjacencyList.values()) {
+                neighbors.remove(Integer.valueOf(targetId));
+            }
+            return true;
         }
 
         public void addEdge(int u, int v) {
-            if (adjacencyList.containsKey(u) && adjacencyList.containsKey(v)) {
+            if (u == v) return;
+            if (stationMap.containsKey(u) && stationMap.containsKey(v)) {
                 if (!adjacencyList.get(u).contains(v)) adjacencyList.get(u).add(v);
                 if (!adjacencyList.get(v).contains(u)) adjacencyList.get(v).add(u);
             }
+        }
+
+        public boolean addEdgeByIds(int id1, int id2) {
+            if (id1 == id2) return false;
+            if (!stationMap.containsKey(id1) || !stationMap.containsKey(id2)) return false;
+            if (adjacencyList.get(id1).contains(id2)) return false;
+
+            addEdge(id1, id2);
+            return true;
+        }
+
+        public boolean removeEdgeByIds(int id1, int id2) {
+            if (!stationMap.containsKey(id1) || !stationMap.containsKey(id2)) return false;
+
+            boolean r1 = adjacencyList.get(id1).remove(Integer.valueOf(id2));
+            boolean r2 = adjacencyList.get(id2).remove(Integer.valueOf(id1));
+            return r1 || r2;
+        }
+
+        public Integer findStationIdByName(String name) {
+            for (Station st : stationMap.values()) {
+                if (st.name.equalsIgnoreCase(name.trim())) {
+                    return st.id;
+                }
+            }
+            return null;
         }
 
         public Station getStation(int id) {
@@ -45,7 +99,6 @@ public class SELEVNetSystem {
             return adjacencyList.getOrDefault(id, new ArrayList<>());
         }
 
-        // BFS Shortest Path Algorithm for Emergency EV Routing
         public BFSResult findEmergencyRoute(int startId, int targetId) {
             if (!stationMap.containsKey(startId) || !stationMap.containsKey(targetId)) {
                 return null;
@@ -76,7 +129,7 @@ public class SELEVNetSystem {
                 }
 
                 for (int neighbor : adjacencyList.get(current)) {
-                    if (!visited.get(neighbor)) {
+                    if (visited.get(neighbor) != null && !visited.get(neighbor)) {
                         visited.put(neighbor, true);
                         parent.put(neighbor, current);
                         hopDistance.put(neighbor, hopDistance.get(current) + 1);
@@ -87,7 +140,6 @@ public class SELEVNetSystem {
 
             if (!found) return new BFSResult(new ArrayList<>(), -1);
 
-            // Reconstruct the shortest path sequence
             List<Integer> path = new ArrayList<>();
             Integer curr = targetId;
             while (curr != null) {
@@ -99,7 +151,6 @@ public class SELEVNetSystem {
         }
     }
 
-    // Result Wrapper for BFS Computation
     static class BFSResult {
         List<Integer> pathNodeIds;
         int totalHops;
@@ -122,78 +173,370 @@ public class SELEVNetSystem {
             System.out.print("Selection: ");
             String choice = scanner.nextLine().trim();
 
-            switch (choice.toUpperCase()) {
+            switch (choice) {
                 case "1":
-                case "A":
-                    displayAllStations();
+                    handleCreateGraphMenu();
                     break;
                 case "2":
-                case "B":
                     handleEmergencyRouting();
                     break;
                 case "3":
-                case "C":
-                    displayAdjacencyList();
-                    break;
-                case "4":
-                case "D":
                     displayGraphGUI(null);
                     break;
+                case "4":
+                    displayAllStations();
+                    break;
+                case "5":
+                    displayAdjacencyList();
+                    break;
                 case "0":
-                case "EXIT":
-                    System.out.println("\nExiting SELEV-Net Routing System. Safe driving!");
+                    System.out.println("\nExiting system. Safe driving!");
                     System.exit(0);
                     break;
                 default:
-                    System.out.println("Invalid selection. Please try again.\n");
+                    System.out.println("Invalid selection. Try again.\n");
             }
         }
     }
 
-    private static void initializeSELEVNetData() {
-        // Register 40 Selangor EV Charging Stations
-        evNetwork.addStation(1, "The Starling Mall");
-        evNetwork.addStation(2, "XPark Sunway Serene");
-        evNetwork.addStation(3, "Jaguar Land Rover, Ara Damansara");
-        evNetwork.addStation(4, "Petronas NKVE");
-        evNetwork.addStation(5, "BYD Ara Damansara (TNBX)");
-        evNetwork.addStation(6, "MG Motor Petaling Jaya by DC Handal");
-        evNetwork.addStation(7, "Perdana View Condo");
-        evNetwork.addStation(8, "Lebuhraya Damansara-Puchong (LDP)");
-        evNetwork.addStation(9, "Megah Rise Mall");
-        evNetwork.addStation(10, "Hyundai Ara Damansara (TNBX)");
-        evNetwork.addStation(11, "Jaya Shopping Centre");
-        evNetwork.addStation(12, "Thomson Hospital");
-        evNetwork.addStation(13, "Gentari @ Menara KLK");
-        evNetwork.addStation(14, "Paradigm Mall");
-        evNetwork.addStation(15, "The Summit USJ");
-        evNetwork.addStation(16, "Damansara Mall (3 Damansara)");
-        evNetwork.addStation(17, "Persiaran Bakti");
-        evNetwork.addStation(18, "Kelana D’Putera Condominium");
-        evNetwork.addStation(19, "Subang Parade");
-        evNetwork.addStation(20, "Subang Jaya Medical Centre");
-        evNetwork.addStation(21, "The Glades Plaza");
-        evNetwork.addStation(22, "Nu Empire Shopping Gallery");
-        evNetwork.addStation(23, "Main Place Mall");
-        evNetwork.addStation(24, "E10");
-        evNetwork.addStation(25, "UOA Business Park Glenmarie");
-        evNetwork.addStation(26, "XPENG Glenmarie");
-        evNetwork.addStation(27, "Concorde Hotel Shah Alam");
-        evNetwork.addStation(28, "Smile Hotel Shah Alam");
-        evNetwork.addStation(29, "KSL Automobile Enterprise");
-        evNetwork.addStation(30, "Sime Darby Auto Selection Glenmarie");
-        evNetwork.addStation(31, "Zaibar Automobile Industries");
-        evNetwork.addStation(32, "Columbia Hospital Bukit Rimau");
-        evNetwork.addStation(33, "Jalan Usahawan 2");
-        evNetwork.addStation(34, "Petronas Bukit Jelutong ELITE");
-        evNetwork.addStation(35, "IOI Mall Puchong");
-        evNetwork.addStation(36, "IOI Rio City Puchong");
-        evNetwork.addStation(37, "Quayside Mall Gamuda Kemuning");
-        evNetwork.addStation(38, "Shell LDP D'Alpinia");
-        evNetwork.addStation(39, "Petronas Dengkil R&R Northbound");
-        evNetwork.addStation(40, "Petronas Temasya Federal Highway");
+    private static void showWelcomeBanner() {
+        System.out.println("--------------------------------------------------");
+        System.out.println(" Welcome to SELEV-Net (Selangor EV GIS Routing)   ");
+        System.out.println(" Staff ID: MAS01                                  ");
+        System.out.println("--------------------------------------------------\n");
+    }
 
-        // Map the 52 Highway Segments (Edges)
+    private static void displayMainMenu() {
+        System.out.println("Main Menu (Press '0' to exit)");
+        System.out.println("--------------------------------------------------");
+        System.out.println("1. Create / Edit Graph");
+        System.out.println("2. Search Station / Emergency Route");
+        System.out.println("3. View GIS World Map (GUI)");
+        System.out.println("4. View All Stations");
+        System.out.println("5. View Adjacency List");
+        System.out.println("0. Exit");
+        System.out.println("--------------------------------------------------");
+    }
+
+    // =========================================================================
+    // IMPROVED & USER-FRIENDLY GRAPH MANAGEMENT MENUS
+    // =========================================================================
+
+    private static void handleCreateGraphMenu() {
+        while (true) {
+            System.out.println("\nCreate & Edit Graph Network");
+            System.out.println("--------------------------------------------------");
+            System.out.println("1. Add a Vertex (Station)");
+            System.out.println("2. Remove a Vertex (Station)");
+            System.out.println("3. Add an Edge (Route Connection)");
+            System.out.println("4. Remove an Edge (Route Connection)");
+            System.out.println("5. Return to Main Menu");
+            System.out.println("--------------------------------------------------");
+            System.out.print("Selection: ");
+            String subChoice = scanner.nextLine().trim();
+
+            switch (subChoice) {
+                case "1":
+                    handleAddVertex();
+                    break;
+                case "2":
+                    handleRemoveVertex();
+                    break;
+                case "3":
+                    handleAddEdge();
+                    break;
+                case "4":
+                    handleRemoveEdge();
+                    break;
+                case "5":
+                case "0":
+                    return;
+                default:
+                    System.out.println("Invalid selection. Enter 1 to 5.");
+            }
+        }
+    }
+
+    private static void handleAddVertex() {
+        while (true) {
+            System.out.println("\n---------------- ADD NEW STATION ----------------");
+            System.out.print("Enter Station Name (or press Enter to cancel): ");
+            String name = scanner.nextLine().trim();
+
+            if (name.isEmpty()) {
+                System.out.println("Cancelled adding station.");
+                break;
+            }
+
+            if (evNetwork.findStationIdByName(name) != null) {
+                System.out.println("❌ Error: A station with the name '" + name + "' already exists.");
+            } else {
+                double lat = 3.0738;
+                double lon = 101.5183;
+
+                System.out.print("Enter Latitude  [Press Enter for default 3.0738]: ");
+                String latInput = scanner.nextLine().trim();
+                if (!latInput.isEmpty()) {
+                    try { lat = Double.parseDouble(latInput); } 
+                    catch (NumberFormatException e) { System.out.println("Invalid input. Using default Latitude 3.0738."); }
+                }
+
+                System.out.print("Enter Longitude [Press Enter for default 101.5183]: ");
+                String lonInput = scanner.nextLine().trim();
+                if (!lonInput.isEmpty()) {
+                    try { lon = Double.parseDouble(lonInput); } 
+                    catch (NumberFormatException e) { System.out.println("Invalid input. Using default Longitude 101.5183."); }
+                }
+
+                int newId = evNetwork.addStation(name, lat, lon);
+                System.out.println("✅ Success! Station '" + name + "' added as Node ID: [" + newId + "]");
+            }
+
+            System.out.print("\nAdd another station? (Y/N): ");
+            if (!scanner.nextLine().trim().equalsIgnoreCase("Y")) break;
+        }
+    }
+
+    private static void handleRemoveVertex() {
+        while (true) {
+            System.out.println("\n-------------- REMOVE A STATION --------------");
+            printQuickStationSummary();
+            System.out.print("Enter Station Name or Node ID to remove (or Enter to cancel): ");
+            String input = scanner.nextLine().trim();
+
+            if (input.isEmpty()) break;
+
+            Integer targetId = parseStationInput(input);
+
+            if (targetId == null) {
+                System.out.println("❌ Error: Could not find station '" + input + "'.");
+            } else {
+                Station st = evNetwork.getStation(targetId);
+                String stName = st.name;
+                if (evNetwork.removeStation(targetId)) {
+                    System.out.println("✅ Success! Station [" + targetId + "] '" + stName + "' and all connected routes were removed.");
+                } else {
+                    System.out.println("❌ Error removing station.");
+                }
+            }
+
+            System.out.print("\nRemove another station? (Y/N): ");
+            if (!scanner.nextLine().trim().equalsIgnoreCase("Y")) break;
+        }
+    }
+
+    private static void handleAddEdge() {
+        while (true) {
+            System.out.println("\n---------------- ADD ROUTE CONNECTION ----------------");
+            printQuickStationSummary();
+            
+            System.out.print("Enter 1st Station (ID or Name): ");
+            String input1 = scanner.nextLine().trim();
+            Integer id1 = parseStationInput(input1);
+
+            if (id1 == null) {
+                System.out.println("❌ Error: Station '" + input1 + "' does not exist.");
+            } else {
+                System.out.print("Enter 2nd Station (ID or Name): ");
+                String input2 = scanner.nextLine().trim();
+                Integer id2 = parseStationInput(input2);
+
+                if (id2 == null) {
+                    System.out.println("❌ Error: Station '" + input2 + "' does not exist.");
+                } else if (id1.equals(id2)) {
+                    System.out.println("❌ Error: Cannot connect a station to itself.");
+                } else {
+                    boolean success = evNetwork.addEdgeByIds(id1, id2);
+                    if (success) {
+                        System.out.println("✅ Success! Route established between [" + id1 + "] " + evNetwork.getStation(id1).name + 
+                                           " and [" + id2 + "] " + evNetwork.getStation(id2).name + ".");
+                    } else {
+                        System.out.println("❌ Error: Connection already exists between these stations.");
+                    }
+                }
+            }
+
+            System.out.print("\nAdd another route connection? (Y/N): ");
+            if (!scanner.nextLine().trim().equalsIgnoreCase("Y")) break;
+        }
+    }
+
+    private static void handleRemoveEdge() {
+        while (true) {
+            System.out.println("\n-------------- REMOVE ROUTE CONNECTION --------------");
+            
+            System.out.print("Enter 1st Station (ID or Name): ");
+            String input1 = scanner.nextLine().trim();
+            Integer id1 = parseStationInput(input1);
+
+            if (id1 == null) {
+                System.out.println("❌ Error: Station '" + input1 + "' does not exist.");
+            } else {
+                System.out.print("Enter 2nd Station (ID or Name): ");
+                String input2 = scanner.nextLine().trim();
+                Integer id2 = parseStationInput(input2);
+
+                if (id2 == null) {
+                    System.out.println("❌ Error: Station '" + input2 + "' does not exist.");
+                } else {
+                    boolean success = evNetwork.removeEdgeByIds(id1, id2);
+                    if (success) {
+                        System.out.println("✅ Success! Route between [" + id1 + "] and [" + id2 + "] has been removed.");
+                    } else {
+                        System.out.println("❌ Error: No direct route exists between these two stations.");
+                    }
+                }
+            }
+
+            System.out.print("\nRemove another route connection? (Y/N): ");
+            if (!scanner.nextLine().trim().equalsIgnoreCase("Y")) break;
+        }
+    }
+
+    // Quick Station Helper Display for Users
+    private static void printQuickStationSummary() {
+        Map<Integer, Station> stations = evNetwork.getAllStations();
+        System.out.println(" Available Stations (" + stations.size() + " total):");
+        int count = 0;
+        for (Station s : stations.values()) {
+            System.out.printf("  [%2d] %-30s", s.id, s.name);
+            count++;
+            if (count % 2 == 0) System.out.println();
+        }
+        if (count % 2 != 0) System.out.println();
+        System.out.println("------------------------------------------------------");
+    }
+
+    // =========================================================================
+
+    private static void displayAllStations() {
+        Map<Integer, Station> stations = evNetwork.getAllStations();
+        System.out.println("\nRegistered Stations (" + stations.size() + ")");
+        System.out.println("------------------------------------------------------------------");
+        for (Map.Entry<Integer, Station> entry : stations.entrySet()) {
+            Station s = entry.getValue();
+            System.out.printf("[%2d] %-38s (Lat: %.4f, Lon: %.4f)%n", s.id, s.name, s.lat, s.lon);
+        }
+        System.out.println("------------------------------------------------------------------\n");
+    }
+
+    private static void displayAdjacencyList() {
+        Map<Integer, Station> stations = evNetwork.getAllStations();
+        System.out.println("\nNetwork Adjacency List");
+        System.out.println("--------------------------------------------------");
+        for (Map.Entry<Integer, Station> entry : stations.entrySet()) {
+            int id = entry.getKey();
+            Station s = entry.getValue();
+            List<Integer> neighbors = evNetwork.getNeighbors(id);
+            System.out.printf("[%2d] %-35s -> %s%n", s.id, s.name, neighbors.toString());
+        }
+        System.out.println("--------------------------------------------------\n");
+    }
+
+    private static void handleEmergencyRouting() {
+        System.out.println("\nEmergency Route Calculation");
+        System.out.println("--------------------------------------------------");
+
+        printQuickStationSummary();
+        System.out.print("Enter Start Station (ID or Name): ");
+        String startInput = scanner.nextLine().trim();
+
+        System.out.print("Enter Target Station (ID or Name): ");
+        String targetInput = scanner.nextLine().trim();
+
+        Integer startId = parseStationInput(startInput);
+        Integer targetId = parseStationInput(targetInput);
+
+        if (startId == null || targetId == null) {
+            System.out.println("Error: Invalid station input.\n");
+            return;
+        }
+
+        if (startId.equals(targetId)) {
+            System.out.println("Start and Target stations are the same.\n");
+            return;
+        }
+
+        Station startStation = evNetwork.getStation(startId);
+        Station targetStation = evNetwork.getStation(targetId);
+
+        BFSResult result = evNetwork.findEmergencyRoute(startId, targetId);
+
+        if (result == null || result.totalHops == -1) {
+            System.out.println("No path exists between " + startStation.name + " and " + targetStation.name + ".\n");
+        } else {
+            System.out.println("\nRoute Found");
+            System.out.println("--------------------------------------------------");
+            System.out.println("From: " + startStation.name + " [" + startId + "]");
+            System.out.println("To  : " + targetStation.name + " [" + targetId + "]");
+            System.out.println("Hops: " + result.totalHops);
+            System.out.println("Path Sequence:");
+
+            for (int i = 0; i < result.pathNodeIds.size(); i++) {
+                int nodeId = result.pathNodeIds.get(i);
+                Station st = evNetwork.getStation(nodeId);
+                System.out.printf("  Step %2d: [%2d] %-35s (%.4f, %.4f)%n", i, st.id, st.name, st.lat, st.lon);
+            }
+            System.out.println("--------------------------------------------------\n");
+
+            System.out.print("Render on Interactive GIS Map? (Y/N): ");
+            if (scanner.nextLine().trim().equalsIgnoreCase("Y")) {
+                displayGraphGUI(result.pathNodeIds);
+            }
+        }
+    }
+
+    private static Integer parseStationInput(String input) {
+        try {
+            int id = Integer.parseInt(input);
+            if (evNetwork.getStation(id) != null) return id;
+        } catch (NumberFormatException ignored) {
+        }
+        return evNetwork.findStationIdByName(input);
+    }
+
+    private static void initializeSELEVNetData() {
+        evNetwork.addStation(1, "The Starling Mall", 3.1348, 101.6229);
+        evNetwork.addStation(2, "XPark Sunway Serene", 3.0872, 101.6033);
+        evNetwork.addStation(3, "Jaguar Land Rover, Ara Damansara", 3.1205, 101.5810);
+        evNetwork.addStation(4, "Petronas NKVE", 3.1098, 101.5921);
+        evNetwork.addStation(5, "BYD Ara Damansara (TNBX)", 3.1221, 101.5835);
+        evNetwork.addStation(6, "MG Motor Petaling Jaya by DC Handal", 3.1112, 101.6310);
+        evNetwork.addStation(7, "Perdana View Condo", 3.1678, 101.6111);
+        evNetwork.addStation(8, "Lebuhraya Damansara-Puchong (LDP)", 3.1190, 101.6150);
+        evNetwork.addStation(9, "Megah Rise Mall", 3.1182, 101.6135);
+        evNetwork.addStation(10, "Hyundai Ara Damansara (TNBX)", 3.1235, 101.5828);
+        evNetwork.addStation(11, "Jaya Shopping Centre", 3.1107, 101.6360);
+        evNetwork.addStation(12, "Thomson Hospital", 3.1492, 101.5801);
+        evNetwork.addStation(13, "Gentari @ Menara KLK", 3.1580, 101.6130);
+        evNetwork.addStation(14, "Paradigm Mall", 3.1051, 101.5960);
+        evNetwork.addStation(15, "The Summit USJ", 3.0592, 101.5930);
+        evNetwork.addStation(16, "Damansara Mall (3 Damansara)", 3.1305, 101.6272);
+        evNetwork.addStation(17, "Persiaran Bakti", 3.1388, 101.5885);
+        evNetwork.addStation(18, "Kelana D’Putera Condominium", 3.1085, 101.5982);
+        evNetwork.addStation(19, "Subang Parade", 3.0820, 101.5862);
+        evNetwork.addStation(20, "Subang Jaya Medical Centre", 3.0782, 101.5875);
+        evNetwork.addStation(21, "The Glades Plaza", 3.0210, 101.5812);
+        evNetwork.addStation(22, "Nu Empire Shopping Gallery", 3.0811, 101.5830);
+        evNetwork.addStation(23, "Main Place Mall", 3.0250, 101.5820);
+        evNetwork.addStation(24, "E10", 2.9810, 101.6500);
+        evNetwork.addStation(25, "UOA Business Park Glenmarie", 3.0875, 101.5851);
+        evNetwork.addStation(26, "XPENG Glenmarie", 3.0890, 101.5732);
+        evNetwork.addStation(27, "Concorde Hotel Shah Alam", 3.0760, 101.5200);
+        evNetwork.addStation(28, "Smile Hotel Shah Alam", 3.0710, 101.5150);
+        evNetwork.addStation(29, "KSL Automobile Enterprise", 3.0112, 101.4510);
+        evNetwork.addStation(30, "Sime Darby Auto Selection Glenmarie", 3.0910, 101.5680);
+        evNetwork.addStation(31, "Zaibar Automobile Industries", 3.0600, 101.5300);
+        evNetwork.addStation(32, "Columbia Hospital Bukit Rimau", 3.0010, 101.5312);
+        evNetwork.addStation(33, "Jalan Usahawan 2", 2.9210, 101.6410);
+        evNetwork.addStation(34, "Petronas Bukit Jelutong ELITE", 3.1010, 101.5320);
+        evNetwork.addStation(35, "IOI Mall Puchong", 3.0450, 101.6210);
+        evNetwork.addStation(36, "IOI Rio City Puchong", 3.0410, 101.6250);
+        evNetwork.addStation(37, "Quayside Mall Gamuda Kemuning", 2.9980, 101.5410);
+        evNetwork.addStation(38, "Shell LDP D'Alpinia", 2.9812, 101.6610);
+        evNetwork.addStation(39, "Petronas Dengkil R&R Northbound", 2.8810, 101.6810);
+        evNetwork.addStation(40, "Petronas Temasya Federal Highway", 3.0840, 101.5790);
+
         int[][] connections = {
             {1, 4}, {1, 6}, {1, 8}, {1, 11},
             {2, 6}, {2, 8}, {2, 14}, {2, 30},
@@ -232,178 +575,287 @@ public class SELEVNetSystem {
         }
     }
 
-    private static void showWelcomeBanner() {
-        System.out.println("==========================================================================");
-        System.out.println(" Welcome to SELEV-Net (Selangor EV Routing System) ");
-        System.out.println(" Unweighted BFS Network Traversal | Emergency Station Locator ");
-        System.out.println("==========================================================================\n");
-    }
+    // Map Viewer Canvas Panel
+    static class MapPanel extends JPanel implements MouseListener, MouseMotionListener, MouseWheelListener {
+        private final List<Integer> highlightedPath;
+        private double zoomFactor = 1.0;
+        private double offsetX = 0;
+        private double offsetY = 0;
+        private Point dragStart;
+        private Integer focusedNodeId = null;
 
-    private static void displayMainMenu() {
-        System.out.println("Main Menu (Press '0' to Exit)");
-        System.out.println("--------------------------------------------------");
-        System.out.println("Option 1 [A]: View All 40 EV Stations");
-        System.out.println("Option 2 [B]: Find Emergency BFS Shortest Route (Minimum Hops)");
-        System.out.println("Option 3 [C]: View Network Connectivity (Adjacency List)");
-        System.out.println("Option 4 [D]: Launch Interactive Network GUI Map");
-        System.out.println("--------------------------------------------------");
-    }
-
-    private static void displayAllStations() {
-        System.out.println("\n================ REGISTERED EV STATIONS (V = 40) ================");
-        for (Map.Entry<Integer, Station> entry : evNetwork.getAllStations().entrySet()) {
-            System.out.printf("[%2d] %s%n", entry.getKey(), entry.getValue().name);
+        public MapPanel(List<Integer> highlightedPath) {
+            this.highlightedPath = highlightedPath;
+            setBackground(new Color(24, 28, 36));
+            addMouseListener(this);
+            addMouseMotionListener(this);
+            addMouseWheelListener(this);
         }
-        System.out.println("=================================================================\n");
-    }
 
-    private static void displayAdjacencyList() {
-        System.out.println("\n================ NETWORK ADJACENCY LIST ================");
-        for (int i = 1; i <= 40; i++) {
-            Station s = evNetwork.getStation(i);
-            List<Integer> neighbors = evNetwork.getNeighbors(i);
-            System.out.printf("[%2d] %-38s -> %s%n", s.id, s.name, neighbors.toString());
-        }
-        System.out.println("========================================================\n");
-    }
+        public void focusOnStation(int id) {
+            this.focusedNodeId = id;
+            Map<Integer, Station> allStations = evNetwork.getAllStations();
+            Station station = allStations.get(id);
+            if (station == null) return;
 
-    private static void handleEmergencyRouting() {
-        System.out.println("\n---------------- EMERGENCY ROUTE COMPUTATION ----------------");
-        try {
-            System.out.print("Enter Start Station ID (1-40): ");
-            int startId = Integer.parseInt(scanner.nextLine().trim());
+            int width = getWidth();
+            int height = getHeight();
 
-            System.out.print("Enter Target Station ID (1-40): ");
-            int targetId = Integer.parseInt(scanner.nextLine().trim());
+            double minLat = Double.MAX_VALUE, maxLat = -Double.MAX_VALUE;
+            double minLon = Double.MAX_VALUE, maxLon = -Double.MAX_VALUE;
 
-            Station startStation = evNetwork.getStation(startId);
-            Station targetStation = evNetwork.getStation(targetId);
-
-            if (startStation == null || targetStation == null) {
-                System.out.println("Error: Invalid station ID entered.\n");
-                return;
+            for (Station s : allStations.values()) {
+                if (s.lat < minLat) minLat = s.lat;
+                if (s.lat > maxLat) maxLat = s.lat;
+                if (s.lon < minLon) minLon = s.lon;
+                if (s.lon > maxLon) maxLon = s.lon;
             }
 
-            BFSResult result = evNetwork.findEmergencyRoute(startId, targetId);
+            double latMargin = Math.max(0.01, (maxLat - minLat) * 0.1);
+            double lonMargin = Math.max(0.01, (maxLon - minLon) * 0.1);
+            minLat -= latMargin; maxLat += latMargin;
+            minLon -= lonMargin; maxLon += lonMargin;
 
-            if (result == null || result.totalHops == -1) {
-                System.out.println("\nNo reachable path exists between the selected stations.\n");
-            } else {
-                System.out.println("\n================ EMERGENCY BFS ROUTE FOUND ================");
-                System.out.println("From  : " + startStation.name + " [Node " + startId + "]");
-                System.out.println("To    : " + targetStation.name + " [Node " + targetId + "]");
-                System.out.println("Total Interchanges (Hops): " + result.totalHops);
-                System.out.println("-----------------------------------------------------------");
-                System.out.println("Optimal Route Sequence:");
+            double px = (((station.lon - minLon) / (maxLon - minLon)) * (width - 380) + 80);
+            double py = ((1.0 - (station.lat - minLat) / (maxLat - minLat)) * (height - 180) + 80);
 
-                for (int i = 0; i < result.pathNodeIds.size(); i++) {
-                    int nodeId = result.pathNodeIds.get(i);
-                    Station st = evNetwork.getStation(nodeId);
-                    System.out.printf("  Step %2d: [%2d] %s%n", i, st.id, st.name);
-                }
-                System.out.println("===========================================================\n");
+            this.zoomFactor = 1.8;
+            this.offsetX = (width / 2.0) - px;
+            this.offsetY = (height / 2.0) - py;
 
-                // Offer to visualize the computed route in GUI
-                System.out.print("Do you want to render this route on the GUI Map? (Y/N): ");
-                String guiChoice = scanner.nextLine().trim();
-                if (guiChoice.equalsIgnoreCase("Y")) {
-                    displayGraphGUI(result.pathNodeIds);
-                }
-            }
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid input. Please enter numerical IDs between 1 and 40.\n");
+            repaint();
         }
-    }
 
-    // Graphical Representation Rendering (Swing Map Window)
-    private static void displayGraphGUI(List<Integer> highlightedPath) {
-        JFrame frame = new JFrame("SELEV-Net Topology Map");
-        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        frame.setSize(1000, 700);
-        frame.setLocationRelativeTo(null);
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2d = (Graphics2D) g;
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        JPanel panel = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2d = (Graphics2D) g;
-                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int width = getWidth();
+            int height = getHeight();
 
-                int width = getWidth();
-                int height = getHeight();
+            Map<Integer, Station> allStations = evNetwork.getAllStations();
+            if (allStations.isEmpty()) return;
 
-                // Compute circular positions for all 40 vertices
-                Map<Integer, Point> positions = new HashMap<>();
-                double centerX = width / 2.0;
-                double centerY = height / 2.0;
-                double radius = Math.min(width, height) * 0.38;
+            double minLat = Double.MAX_VALUE, maxLat = -Double.MAX_VALUE;
+            double minLon = Double.MAX_VALUE, maxLon = -Double.MAX_VALUE;
 
-                for (int id = 1; id <= 40; id++) {
-                    double angle = 2 * Math.PI * (id - 1) / 40.0;
-                    int x = (int) (centerX + radius * Math.cos(angle));
-                    int y = (int) (centerY + radius * Math.sin(angle));
-                    positions.put(id, new Point(x, y));
-                }
+            for (Station s : allStations.values()) {
+                if (s.lat < minLat) minLat = s.lat;
+                if (s.lat > maxLat) maxLat = s.lat;
+                if (s.lon < minLon) minLon = s.lon;
+                if (s.lon > maxLon) maxLon = s.lon;
+            }
 
-                Set<String> drawnEdges = new HashSet<>();
+            double latMargin = Math.max(0.01, (maxLat - minLat) * 0.1);
+            double lonMargin = Math.max(0.01, (maxLon - minLon) * 0.1);
+            minLat -= latMargin; maxLat += latMargin;
+            minLon -= lonMargin; maxLon += lonMargin;
 
-                // 1. Draw Default Edges
-                g2d.setStroke(new BasicStroke(1));
-                g2d.setColor(new Color(200, 200, 200));
+            Map<Integer, Point> screenPositions = new HashMap<>();
+            for (Station s : allStations.values()) {
+                int px = (int) (((s.lon - minLon) / (maxLon - minLon)) * (width - 380) + 80);
+                int py = (int) ((1.0 - (s.lat - minLat) / (maxLat - minLat)) * (height - 180) + 80);
 
-                for (int id = 1; id <= 40; id++) {
-                    Point p1 = positions.get(id);
-                    for (int neighbor : evNetwork.getNeighbors(id)) {
-                        String edgeKey = Math.min(id, neighbor) + "-" + Math.max(id, neighbor);
-                        if (!drawnEdges.contains(edgeKey)) {
-                            drawnEdges.add(edgeKey);
-                            Point p2 = positions.get(neighbor);
-                            g2d.drawLine(p1.x, p1.y, p2.x, p2.y);
-                        }
-                    }
-                }
+                int finalX = (int) ((px - width / 2.0) * zoomFactor + width / 2.0 + offsetX);
+                int finalY = (int) ((py - height / 2.0) * zoomFactor + height / 2.0 + offsetY);
 
-                // 2. Highlight Shortest Path (If available)
-                if (highlightedPath != null && highlightedPath.size() > 1) {
-                    g2d.setStroke(new BasicStroke(4));
-                    g2d.setColor(new Color(220, 20, 60)); // Crimson line for route
+                screenPositions.put(s.id, new Point(finalX, finalY));
+            }
 
-                    for (int i = 0; i < highlightedPath.size() - 1; i++) {
-                        Point p1 = positions.get(highlightedPath.get(i));
-                        Point p2 = positions.get(highlightedPath.get(i + 1));
+            // Draw Edges
+            Set<String> drawnEdges = new HashSet<>();
+            g2d.setStroke(new BasicStroke((float) (1.8 * Math.sqrt(zoomFactor))));
+            g2d.setColor(new Color(75, 85, 99));
+
+            for (int id : allStations.keySet()) {
+                Point p1 = screenPositions.get(id);
+                for (int neighbor : evNetwork.getNeighbors(id)) {
+                    String edgeKey = Math.min(id, neighbor) + "-" + Math.max(id, neighbor);
+                    if (!drawnEdges.contains(edgeKey) && screenPositions.containsKey(neighbor)) {
+                        drawnEdges.add(edgeKey);
+                        Point p2 = screenPositions.get(neighbor);
                         g2d.drawLine(p1.x, p1.y, p2.x, p2.y);
                     }
                 }
+            }
 
-                // 3. Draw Nodes (Vertices)
-                int nodeRadius = 12;
-                for (int id = 1; id <= 40; id++) {
-                    Point p = positions.get(id);
+            // Highlight Shortest Path
+            if (highlightedPath != null && highlightedPath.size() > 1) {
+                g2d.setStroke(new BasicStroke((float) (4.5 * Math.sqrt(zoomFactor))));
+                g2d.setColor(new Color(239, 68, 68));
 
-                    if (highlightedPath != null && highlightedPath.contains(id)) {
-                        if (id == highlightedPath.get(0)) {
-                            g2d.setColor(new Color(34, 139, 34)); // Start Node: Green
-                        } else if (id == highlightedPath.get(highlightedPath.size() - 1)) {
-                            g2d.setColor(new Color(255, 69, 0)); // Target Node: Orange-Red
-                        } else {
-                            g2d.setColor(new Color(220, 20, 60)); // Path Node: Crimson
-                        }
-                    } else {
-                        g2d.setColor(new Color(70, 130, 180)); // Regular Node: Steel Blue
+                for (int i = 0; i < highlightedPath.size() - 1; i++) {
+                    Point p1 = screenPositions.get(highlightedPath.get(i));
+                    Point p2 = screenPositions.get(highlightedPath.get(i + 1));
+                    if (p1 != null && p2 != null) {
+                        g2d.drawLine(p1.x, p1.y, p2.x, p2.y);
                     }
-
-                    g2d.fillOval(p.x - nodeRadius, p.y - nodeRadius, nodeRadius * 2, nodeRadius * 2);
-                    g2d.setColor(Color.BLACK);
-                    g2d.drawOval(p.x - nodeRadius, p.y - nodeRadius, nodeRadius * 2, nodeRadius * 2);
-
-                    // Render Node ID
-                    g2d.setFont(new Font("SansSerif", Font.BOLD, 10));
-                    g2d.drawString(String.valueOf(id), p.x - 4, p.y + 4);
                 }
             }
-        };
 
-        frame.add(panel);
+            // Draw Station Nodes
+            int baseRadius = (int) Math.max(10, 12 * Math.sqrt(zoomFactor));
+            for (int id : allStations.keySet()) {
+                Point p = screenPositions.get(id);
+
+                if (highlightedPath != null && highlightedPath.contains(id)) {
+                    if (id == highlightedPath.get(0)) {
+                        g2d.setColor(new Color(34, 197, 94));
+                    } else if (id == highlightedPath.get(highlightedPath.size() - 1)) {
+                        g2d.setColor(new Color(249, 115, 22));
+                    } else {
+                        g2d.setColor(new Color(239, 68, 68));
+                    }
+                } else {
+                    g2d.setColor(new Color(59, 130, 246));
+                }
+
+                g2d.fillOval(p.x - baseRadius, p.y - baseRadius, baseRadius * 2, baseRadius * 2);
+                g2d.setColor(Color.WHITE);
+                g2d.setStroke(new BasicStroke(1.5f));
+                g2d.drawOval(p.x - baseRadius, p.y - baseRadius, baseRadius * 2, baseRadius * 2);
+
+                g2d.setFont(new Font("SansSerif", Font.BOLD, (int) Math.max(9, 11 * Math.sqrt(zoomFactor))));
+                FontMetrics fm = g2d.getFontMetrics();
+                String idStr = String.valueOf(id);
+                g2d.drawString(idStr, p.x - (fm.stringWidth(idStr) / 2), p.y + (fm.getAscent() / 2) - 2);
+
+                if (focusedNodeId != null && focusedNodeId == id) {
+                    g2d.setColor(Color.YELLOW);
+                    g2d.setStroke(new BasicStroke(3.0f));
+                    int auraRadius = baseRadius + 10;
+                    g2d.drawOval(p.x - auraRadius, p.y - auraRadius, auraRadius * 2, auraRadius * 2);
+
+                    Station focusSt = allStations.get(id);
+                    g2d.setFont(new Font("SansSerif", Font.BOLD, 13));
+                    g2d.setColor(Color.YELLOW);
+                    g2d.drawString("📍 " + focusSt.name, p.x + baseRadius + 12, p.y + 4);
+                }
+            }
+
+            // Top-Left Legend HUD
+            g2d.setColor(new Color(15, 23, 42, 220));
+            g2d.fillRoundRect(15, 15, 280, 80, 10, 10);
+            g2d.setColor(Color.WHITE);
+            g2d.setFont(new Font("SansSerif", Font.BOLD, 12));
+            g2d.drawString("SELEV-Net Geographic EV Map", 25, 35);
+            g2d.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            g2d.drawString("• Mouse Scroll: Zoom In / Out", 25, 53);
+            g2d.drawString("• Click List Item: Center & Locate Node", 25, 70);
+        }
+
+        @Override public void mouseWheelMoved(MouseWheelEvent e) {
+            if (e.getWheelRotation() < 0) {
+                zoomFactor *= 1.15;
+            } else {
+                zoomFactor /= 1.15;
+                if (zoomFactor < 0.3) zoomFactor = 0.3;
+            }
+            repaint();
+        }
+
+        @Override public void mousePressed(MouseEvent e) { dragStart = e.getPoint(); }
+        @Override public void mouseDragged(MouseEvent e) {
+            if (dragStart != null) {
+                offsetX += e.getX() - dragStart.x;
+                offsetY += e.getY() - dragStart.y;
+                dragStart = e.getPoint();
+                repaint();
+            }
+        }
+        @Override public void mouseReleased(MouseEvent e) { dragStart = null; }
+        @Override public void mouseClicked(MouseEvent e) {}
+        @Override public void mouseEntered(MouseEvent e) {}
+        @Override public void mouseExited(MouseEvent e) {}
+        @Override public void mouseMoved(MouseEvent e) {}
+    }
+
+    private static void displayGraphGUI(List<Integer> highlightedPath) {
+        JFrame frame = new JFrame("SELEV-Net GIS Map");
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        frame.setSize(1250, 820);
+        frame.setLocationRelativeTo(null);
+
+        JLayeredPane layeredPane = new JLayeredPane();
+
+        MapPanel mapPanel = new MapPanel(highlightedPath);
+        mapPanel.setBounds(0, 0, 1250, 820);
+        layeredPane.add(mapPanel, JLayeredPane.DEFAULT_LAYER);
+
+        JPanel legendPanel = new JPanel();
+        legendPanel.setLayout(new BoxLayout(legendPanel, BoxLayout.Y_AXIS));
+        legendPanel.setBackground(new Color(15, 23, 42));
+
+        JLabel titleLabel = new JLabel(" STATION INDEX (Click to Locate)");
+        titleLabel.setFont(new Font("SansSerif", Font.BOLD, 12));
+        titleLabel.setForeground(Color.CYAN);
+        titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        legendPanel.add(titleLabel);
+        legendPanel.add(Box.createRigidArea(new Dimension(0, 6)));
+
+        Map<Integer, Station> stations = evNetwork.getAllStations();
+        List<Integer> sortedIds = new ArrayList<>(stations.keySet());
+        Collections.sort(sortedIds);
+
+        for (int id : sortedIds) {
+            Station st = stations.get(id);
+            JLabel item = new JLabel(String.format(" [%2d]  %s", st.id, st.name));
+            item.setFont(new Font("Monospaced", Font.PLAIN, 11));
+            item.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+            if (highlightedPath != null && highlightedPath.contains(id)) {
+                if (id == highlightedPath.get(0)) {
+                    item.setForeground(new Color(34, 197, 94));
+                } else if (id == highlightedPath.get(highlightedPath.size() - 1)) {
+                    item.setForeground(new Color(249, 115, 22));
+                } else {
+                    item.setForeground(new Color(239, 68, 68));
+                }
+            } else {
+                item.setForeground(new Color(229, 231, 235));
+            }
+
+            item.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    mapPanel.focusOnStation(st.id);
+                }
+
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    item.setFont(new Font("Monospaced", Font.BOLD, 11));
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    item.setFont(new Font("Monospaced", Font.PLAIN, 11));
+                }
+            });
+
+            item.setAlignmentX(Component.LEFT_ALIGNMENT);
+            legendPanel.add(item);
+        }
+
+        JScrollPane scrollPane = new JScrollPane(legendPanel);
+        scrollPane.setBounds(910, 15, 300, 380);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(75, 85, 99), 1));
+        scrollPane.getVerticalScrollBar().setUnitIncrement(12);
+
+        layeredPane.add(scrollPane, JLayeredPane.PALETTE_LAYER);
+
+        frame.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                int w = frame.getWidth();
+                int h = frame.getHeight();
+                mapPanel.setBounds(0, 0, w, h);
+                scrollPane.setBounds(w - 330, 15, 300, Math.min(420, h - 80));
+            }
+        });
+
+        frame.add(layeredPane);
         frame.setVisible(true);
     }
 }
