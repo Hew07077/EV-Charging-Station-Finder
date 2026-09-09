@@ -524,25 +524,27 @@ public class SELEVNetSystem {
         System.out.println("--------------------------------------------------");
 
         printQuickStationSummary();
+
+        // Validate Start Station first — stop immediately if invalid, before
+        // ever asking for the Target Station.
         String startInput = promptInput("Enter Start Station (ID or Name): ");
         if (startInput.isEmpty()) {
             System.out.println("Error: Start station cannot be empty.\n");
             return;
         }
+        Integer startId = parseStationInput(startInput);
+        if (startId == null) {
+            System.out.println("Error: Could not find start station '" + startInput + "'.\n");
+            return;
+        }
 
+        // Start Station is valid — now ask for and validate the Target Station.
         String targetInput = promptInput("Enter Target Station (ID or Name): ");
         if (targetInput.isEmpty()) {
             System.out.println("Error: Target station cannot be empty.\n");
             return;
         }
-
-        Integer startId = parseStationInput(startInput);
         Integer targetId = parseStationInput(targetInput);
-
-        if (startId == null) {
-            System.out.println("Error: Could not find start station '" + startInput + "'.\n");
-            return;
-        }
         if (targetId == null) {
             System.out.println("Error: Could not find target station '" + targetInput + "'.\n");
             return;
