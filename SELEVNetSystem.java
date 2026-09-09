@@ -28,7 +28,24 @@ public class SELEVNetSystem {
         private int nextAutoId = 1;
 
         public void addStation(int id, String name, double lat, double lon) {
-            stationMap.put(id, new Station(id, name, lat, lon));
+            // Validation: reject malformed data even for internally-seeded stations
+            if (id <= 0) {
+                System.out.println("❌ Internal Error: Station id must be positive. Skipped station '" + name + "'.");
+                return;
+            }
+            if (name == null || name.trim().isEmpty()) {
+                System.out.println("❌ Internal Error: Station name cannot be empty (id=" + id + "). Skipped.");
+                return;
+            }
+            if (!isValidLatitude(lat) || !isValidLongitude(lon)) {
+                System.out.println("❌ Internal Error: Invalid coordinates for station '" + name + "'. Skipped.");
+                return;
+            }
+            if (stationMap.containsKey(id)) {
+                System.out.println("❌ Internal Error: Station id " + id + " already exists. Skipped '" + name + "'.");
+                return;
+            }
+            stationMap.put(id, new Station(id, name.trim(), lat, lon));
             adjacencyList.putIfAbsent(id, new ArrayList<>());
             if (id >= nextAutoId) {
                 nextAutoId = id + 1;
@@ -36,8 +53,14 @@ public class SELEVNetSystem {
         }
 
         public int addStation(String name, double lat, double lon) {
+            if (name == null || name.trim().isEmpty()) {
+                throw new IllegalArgumentException("Station name cannot be empty.");
+            }
+            if (!isValidLatitude(lat) || !isValidLongitude(lon)) {
+                throw new IllegalArgumentException("Coordinates out of valid range.");
+            }
             int id = nextAutoId++;
-            stationMap.put(id, new Station(id, name, lat, lon));
+            stationMap.put(id, new Station(id, name.trim(), lat, lon));
             adjacencyList.putIfAbsent(id, new ArrayList<>());
             return id;
         }
@@ -79,6 +102,7 @@ public class SELEVNetSystem {
         }
 
         public Integer findStationIdByName(String name) {
+            if (name == null || name.trim().isEmpty()) return null;
             for (Station st : stationMap.values()) {
                 if (st.name.equalsIgnoreCase(name.trim())) {
                     return st.id;
@@ -96,6 +120,15 @@ public class SELEVNetSystem {
                 }
             }
             return false;
+        }
+
+        // Validation helpers for geographic coordinate ranges
+        public static boolean isValidLatitude(double lat) {
+            return lat >= -90.0 && lat <= 90.0;
+        }
+
+        public static boolean isValidLongitude(double lon) {
+            return lon >= -180.0 && lon <= 180.0;
         }
 
         public Station getStation(int id) {
@@ -175,14 +208,27 @@ public class SELEVNetSystem {
     private static final EVGraph evNetwork = new EVGraph();
     private static final Scanner scanner = new Scanner(System.in);
 
+    // Centralized, safe input helper used by ALL console prompts.
+    // Guards against abrupt end-of-input (e.g. piped/redirected stdin closing)
+    // so the program exits gracefully instead of throwing an uncaught exception.
+    private static String promptInput(String prompt) {
+        System.out.print(prompt);
+        try {
+            return scanner.nextLine().trim();
+        } catch (NoSuchElementException | IllegalStateException e) {
+            System.out.println("\n⚠ Input stream closed unexpectedly. Exiting system.");
+            System.exit(0);
+            return "";
+        }
+    }
+
     public static void main(String[] args) {
         initializeSELEVNetData();
         showWelcomeBanner();
 
         while (true) {
             displayMainMenu();
-            System.out.print("Selection: ");
-            String choice = scanner.nextLine().trim();
+            String choice = promptInput("Selection: ");
 
             switch (choice) {
                 case "1":
@@ -239,8 +285,7 @@ public class SELEVNetSystem {
             System.out.println("4. Remove an Edge (Route Connection)");
             System.out.println("0. Return to Main Menu");
             System.out.println("--------------------------------------------------");
-            System.out.print("Selection: ");
-            String subChoice = scanner.nextLine().trim();
+            String subChoice = promptInput("Selection: ");
 
             switch (subChoice) {
                 case "1":
@@ -263,19 +308,23 @@ public class SELEVNetSystem {
         }
     }
 
+    // Maximum sensible length for a station display name (keeps GUI legend readable)
+    private static final int MAX_NAME_LENGTH = 60;
+
     private static void handleAddVertex() {
         Random random = new Random();
         while (true) {
             System.out.println("\n---------------- ADD NEW STATION ----------------");
-            System.out.print("Enter Station Name (or press Enter to cancel): ");
-            String name = scanner.nextLine().trim();
+            String name = promptInput("Enter Station Name (or press Enter to cancel): ");
 
             if (name.isEmpty()) {
                 System.out.println("Cancelled adding station.");
                 break;
             }
 
-            if (evNetwork.findStationIdByName(name) != null) {
+            if (name.length() > MAX_NAME_LENGTH) {
+                System.out.println("❌ Error: Station name is too long (max " + MAX_NAME_LENGTH + " characters). Please try again.");
+            } else if (evNetwork.findStationIdByName(name) != null) {
                 System.out.println("❌ Error: A station with the name '" + name + "' already exists.");
             } else {
                 double defaultLat = 2.7 + (3.3 - 2.7) * random.nextDouble();
@@ -284,18 +333,32 @@ public class SELEVNetSystem {
                 double lat = defaultLat;
                 double lon = defaultLon;
 
-                System.out.printf("Enter Latitude  [Press Enter for default %.4f]: ", defaultLat);
-                String latInput = scanner.nextLine().trim();
+                String latInput = promptInput(String.format("Enter Latitude  [Press Enter for default %.4f]: ", defaultLat));
                 if (!latInput.isEmpty()) {
-                    try { lat = Double.parseDouble(latInput); } 
-                    catch (NumberFormatException e) { System.out.println("Invalid input. Using default Latitude " + String.format("%.4f", defaultLat) + "."); }
+                    try {
+                        double parsedLat = Double.parseDouble(latInput);
+                        if (!EVGraph.isValidLatitude(parsedLat)) {
+                            System.out.println("⚠ Invalid range: Latitude must be between -90 and 90. Using default Latitude " + String.format("%.4f", defaultLat) + ".");
+                        } else {
+                            lat = parsedLat;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("Invalid input. Using default Latitude " + String.format("%.4f", defaultLat) + ".");
+                    }
                 }
 
-                System.out.printf("Enter Longitude [Press Enter for default %.4f]: ", defaultLon);
-                String lonInput = scanner.nextLine().trim();
+                String lonInput = promptInput(String.format("Enter Longitude [Press Enter for default %.4f]: ", defaultLon));
                 if (!lonInput.isEmpty()) {
-                    try { lon = Double.parseDouble(lonInput); } 
-                    catch (NumberFormatException e) { System.out.println("Invalid input. Using default Longitude " + String.format("%.4f", defaultLon) + "."); }
+                    try {
+                        double parsedLon = Double.parseDouble(lonInput);
+                        if (!EVGraph.isValidLongitude(parsedLon)) {
+                            System.out.println("⚠ Invalid range: Longitude must be between -180 and 180. Using default Longitude " + String.format("%.4f", defaultLon) + ".");
+                        } else {
+                            lon = parsedLon;
+                        }
+                    } catch (NumberFormatException e) {
+                        System.out.println("Invalid input. Using default Longitude " + String.format("%.4f", defaultLon) + ".");
+                    }
                 }
 
                 // Check if a station already exists at these exact coordinates
@@ -307,8 +370,8 @@ public class SELEVNetSystem {
                 }
             }
 
-            System.out.print("\nAdd another station? (Y/N): ");
-            if (!scanner.nextLine().trim().equalsIgnoreCase("Y")) break;
+            String again = promptInput("\nAdd another station? (Y/N): ");
+            if (!again.equalsIgnoreCase("Y")) break;
         }
     }
 
@@ -316,8 +379,7 @@ public class SELEVNetSystem {
         while (true) {
             System.out.println("\n-------------- REMOVE A STATION --------------");
             printQuickStationSummary();
-            System.out.print("Enter Station Name or Node ID to remove (or Enter to cancel): ");
-            String input = scanner.nextLine().trim();
+            String input = promptInput("Enter Station Name or Node ID to remove (or Enter to cancel): ");
 
             if (input.isEmpty()) break;
 
@@ -335,8 +397,8 @@ public class SELEVNetSystem {
                 }
             }
 
-            System.out.print("\nRemove another station? (Y/N): ");
-            if (!scanner.nextLine().trim().equalsIgnoreCase("Y")) break;
+            String again = promptInput("\nRemove another station? (Y/N): ");
+            if (!again.equalsIgnoreCase("Y")) break;
         }
     }
 
@@ -344,67 +406,79 @@ public class SELEVNetSystem {
         while (true) {
             System.out.println("\n---------------- ADD ROUTE CONNECTION ----------------");
             printQuickStationSummary();
-            
-            System.out.print("Enter 1st Station (ID or Name): ");
-            String input1 = scanner.nextLine().trim();
+
+            String input1 = promptInput("Enter 1st Station (ID or Name, or Enter to cancel): ");
+            if (input1.isEmpty()) {
+                System.out.println("Cancelled adding route connection.");
+                break;
+            }
             Integer id1 = parseStationInput(input1);
 
             if (id1 == null) {
                 System.out.println("❌ Error: Station '" + input1 + "' does not exist.");
             } else {
-                System.out.print("Enter 2nd Station (ID or Name): ");
-                String input2 = scanner.nextLine().trim();
-                Integer id2 = parseStationInput(input2);
-
-                if (id2 == null) {
-                    System.out.println("❌ Error: Station '" + input2 + "' does not exist.");
-                } else if (id1.equals(id2)) {
-                    System.out.println("❌ Error: Cannot connect a station to itself.");
+                String input2 = promptInput("Enter 2nd Station (ID or Name): ");
+                if (input2.isEmpty()) {
+                    System.out.println("❌ Error: 2nd station cannot be empty.");
                 } else {
-                    boolean success = evNetwork.addEdgeByIds(id1, id2);
-                    if (success) {
-                        System.out.println("✅ Success! Route established between [" + id1 + "] " + evNetwork.getStation(id1).name + 
-                                           " and [" + id2 + "] " + evNetwork.getStation(id2).name + ".");
+                    Integer id2 = parseStationInput(input2);
+
+                    if (id2 == null) {
+                        System.out.println("❌ Error: Station '" + input2 + "' does not exist.");
+                    } else if (id1.equals(id2)) {
+                        System.out.println("❌ Error: Cannot connect a station to itself.");
                     } else {
-                        System.out.println("❌ Error: Connection already exists between these stations.");
+                        boolean success = evNetwork.addEdgeByIds(id1, id2);
+                        if (success) {
+                            System.out.println("✅ Success! Route established between [" + id1 + "] " + evNetwork.getStation(id1).name +
+                                    " and [" + id2 + "] " + evNetwork.getStation(id2).name + ".");
+                        } else {
+                            System.out.println("❌ Error: Connection already exists between these stations.");
+                        }
                     }
                 }
             }
 
-            System.out.print("\nAdd another route connection? (Y/N): ");
-            if (!scanner.nextLine().trim().equalsIgnoreCase("Y")) break;
+            String again = promptInput("\nAdd another route connection? (Y/N): ");
+            if (!again.equalsIgnoreCase("Y")) break;
         }
     }
 
     private static void handleRemoveEdge() {
         while (true) {
             System.out.println("\n-------------- REMOVE ROUTE CONNECTION --------------");
-            
-            System.out.print("Enter 1st Station (ID or Name): ");
-            String input1 = scanner.nextLine().trim();
+
+            String input1 = promptInput("Enter 1st Station (ID or Name, or Enter to cancel): ");
+            if (input1.isEmpty()) {
+                System.out.println("Cancelled removing route connection.");
+                break;
+            }
             Integer id1 = parseStationInput(input1);
 
             if (id1 == null) {
                 System.out.println("❌ Error: Station '" + input1 + "' does not exist.");
             } else {
-                System.out.print("Enter 2nd Station (ID or Name): ");
-                String input2 = scanner.nextLine().trim();
-                Integer id2 = parseStationInput(input2);
-
-                if (id2 == null) {
-                    System.out.println("❌ Error: Station '" + input2 + "' does not exist.");
+                String input2 = promptInput("Enter 2nd Station (ID or Name): ");
+                if (input2.isEmpty()) {
+                    System.out.println("❌ Error: 2nd station cannot be empty.");
                 } else {
-                    boolean success = evNetwork.removeEdgeByIds(id1, id2);
-                    if (success) {
-                        System.out.println("✅ Success! Route between [" + id1 + "] and [" + id2 + "] has been removed.");
+                    Integer id2 = parseStationInput(input2);
+
+                    if (id2 == null) {
+                        System.out.println("❌ Error: Station '" + input2 + "' does not exist.");
                     } else {
-                        System.out.println("❌ Error: No direct route exists between these two stations.");
+                        boolean success = evNetwork.removeEdgeByIds(id1, id2);
+                        if (success) {
+                            System.out.println("✅ Success! Route between [" + id1 + "] and [" + id2 + "] has been removed.");
+                        } else {
+                            System.out.println("❌ Error: No direct route exists between these two stations.");
+                        }
                     }
                 }
             }
 
-            System.out.print("\nRemove another route connection? (Y/N): ");
-            if (!scanner.nextLine().trim().equalsIgnoreCase("Y")) break;
+            String again = promptInput("\nRemove another route connection? (Y/N): ");
+            if (!again.equalsIgnoreCase("Y")) break;
         }
     }
 
@@ -450,17 +524,27 @@ public class SELEVNetSystem {
         System.out.println("--------------------------------------------------");
 
         printQuickStationSummary();
-        System.out.print("Enter Start Station (ID or Name): ");
-        String startInput = scanner.nextLine().trim();
+        String startInput = promptInput("Enter Start Station (ID or Name): ");
+        if (startInput.isEmpty()) {
+            System.out.println("Error: Start station cannot be empty.\n");
+            return;
+        }
 
-        System.out.print("Enter Target Station (ID or Name): ");
-        String targetInput = scanner.nextLine().trim();
+        String targetInput = promptInput("Enter Target Station (ID or Name): ");
+        if (targetInput.isEmpty()) {
+            System.out.println("Error: Target station cannot be empty.\n");
+            return;
+        }
 
         Integer startId = parseStationInput(startInput);
         Integer targetId = parseStationInput(targetInput);
 
-        if (startId == null || targetId == null) {
-            System.out.println("Error: Invalid station input.\n");
+        if (startId == null) {
+            System.out.println("Error: Could not find start station '" + startInput + "'.\n");
+            return;
+        }
+        if (targetId == null) {
+            System.out.println("Error: Could not find target station '" + targetInput + "'.\n");
             return;
         }
 
@@ -491,18 +575,26 @@ public class SELEVNetSystem {
             }
             System.out.println("--------------------------------------------------\n");
 
-            System.out.print("Render on Interactive GIS Map? (Y/N): ");
-            if (scanner.nextLine().trim().equalsIgnoreCase("Y")) {
+            String renderChoice = promptInput("Render on Interactive GIS Map? (Y/N): ");
+            if (renderChoice.equalsIgnoreCase("Y")) {
                 displayGraphGUI(result.pathNodeIds);
             }
         }
     }
 
     private static Integer parseStationInput(String input) {
+        if (input == null || input.trim().isEmpty()) {
+            return null;
+        }
+        input = input.trim();
         try {
             int id = Integer.parseInt(input);
             if (evNetwork.getStation(id) != null) return id;
+            // Numeric input that does not match any existing station id — do not
+            // silently fall through to a name lookup that can never match a number.
+            return null;
         } catch (NumberFormatException ignored) {
+            // Not numeric — fall back to name-based lookup.
         }
         return evNetwork.findStationIdByName(input);
     }
@@ -550,36 +642,36 @@ public class SELEVNetSystem {
         evNetwork.addStation(40, "Petronas Temasya Federal Highway", 3.0840, 101.5790);
 
         int[][] connections = {
-            {1, 4}, {1, 6}, {1, 8}, {1, 11},
-            {2, 6}, {2, 8}, {2, 14}, {2, 30},
-            {3, 4}, {3, 5}, {3, 10}, {3, 17},
-            {4, 5}, {4, 18},
-            {5, 10}, {5, 25},
-            {6, 11}, {6, 40},
-            {7, 8}, {7, 13}, {7, 16},
-            {8, 9}, {8, 35}, {8, 38},
-            {9, 11}, {9, 15}, {9, 16},
-            {10, 12}, {10, 17},
-            {11, 16},
-            {12, 13},
-            {14, 18}, {14, 20}, {14, 25},
-            {15, 16}, {15, 20}, {15, 28},
-            {17, 19},
-            {19, 20}, {19, 22}, {19, 23}, {19, 26},
-            {20, 23},
-            {21, 23}, {21, 27}, {21, 37},
-            {22, 23}, {22, 28},
-            {24, 33}, {24, 39},
-            {25, 26}, {25, 30}, {25, 40},
-            {26, 30}, {26, 31},
-            {27, 31}, {27, 34},
-            {29, 31}, {29, 32},
-            {31, 34},
-            {32, 37},
-            {33, 39},
-            {35, 30}, {35, 36},
-            {36, 38},
-            {38, 39}
+                {1, 4}, {1, 6}, {1, 8}, {1, 11},
+                {2, 6}, {2, 8}, {2, 14}, {2, 30},
+                {3, 4}, {3, 5}, {3, 10}, {3, 17},
+                {4, 5}, {4, 18},
+                {5, 10}, {5, 25},
+                {6, 11}, {6, 40},
+                {7, 8}, {7, 13}, {7, 16},
+                {8, 9}, {8, 35}, {8, 38},
+                {9, 11}, {9, 15}, {9, 16},
+                {10, 12}, {10, 17},
+                {11, 16},
+                {12, 13},
+                {14, 18}, {14, 20}, {14, 25},
+                {15, 16}, {15, 20}, {15, 28},
+                {17, 19},
+                {19, 20}, {19, 22}, {19, 23}, {19, 26},
+                {20, 23},
+                {21, 23}, {21, 27}, {21, 37},
+                {22, 23}, {22, 28},
+                {24, 33}, {24, 39},
+                {25, 26}, {25, 30}, {25, 40},
+                {26, 30}, {26, 31},
+                {27, 31}, {27, 34},
+                {29, 31}, {29, 32},
+                {31, 34},
+                {32, 37},
+                {33, 39},
+                {35, 30}, {35, 36},
+                {36, 38},
+                {38, 39}
         };
 
         for (int[] edge : connections) {
@@ -595,6 +687,10 @@ public class SELEVNetSystem {
         private Point dragStart;
         private Integer focusedNodeId = null;
 
+        // Sensible zoom bounds so the map cannot be scrolled into an unusable state
+        private static final double MIN_ZOOM = 0.3;
+        private static final double MAX_ZOOM = 8.0;
+
         public MapPanel(List<Integer> highlightedPath) {
             this.highlightedPath = highlightedPath;
             setBackground(new Color(24, 28, 36));
@@ -604,13 +700,15 @@ public class SELEVNetSystem {
         }
 
         public void focusOnStation(int id) {
-            this.focusedNodeId = id;
             Map<Integer, Station> allStations = evNetwork.getAllStations();
             Station station = allStations.get(id);
-            if (station == null) return;
+            if (station == null) return; // Validation: ignore focus requests for unknown ids
+
+            this.focusedNodeId = id;
 
             int width = getWidth();
             int height = getHeight();
+            if (width <= 0 || height <= 0) return; // Validation: panel not yet laid out
 
             double minLat = Double.MAX_VALUE, maxLat = -Double.MAX_VALUE;
             double minLon = Double.MAX_VALUE, maxLon = -Double.MAX_VALUE;
@@ -756,9 +854,10 @@ public class SELEVNetSystem {
         @Override public void mouseWheelMoved(MouseWheelEvent e) {
             if (e.getWheelRotation() < 0) {
                 zoomFactor *= 1.15;
+                if (zoomFactor > MAX_ZOOM) zoomFactor = MAX_ZOOM; // Validation: cap max zoom
             } else {
                 zoomFactor /= 1.15;
-                if (zoomFactor < 0.3) zoomFactor = 0.3;
+                if (zoomFactor < MIN_ZOOM) zoomFactor = MIN_ZOOM; // Validation: cap min zoom
             }
             repaint();
         }
@@ -780,6 +879,18 @@ public class SELEVNetSystem {
     }
 
     private static void displayGraphGUI(List<Integer> highlightedPath) {
+        // Validation: guard against a highlighted path referencing stations that
+        // no longer exist (e.g. removed between route calculation and rendering)
+        if (highlightedPath != null) {
+            for (Integer id : highlightedPath) {
+                if (evNetwork.getStation(id) == null) {
+                    System.out.println("⚠ Warning: Path contains a station that no longer exists. Showing map without highlighted path.");
+                    highlightedPath = null;
+                    break;
+                }
+            }
+        }
+
         JFrame frame = new JFrame("SELEV-Net GIS Map");
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.setSize(1250, 820);
@@ -806,16 +917,17 @@ public class SELEVNetSystem {
         List<Integer> sortedIds = new ArrayList<>(stations.keySet());
         Collections.sort(sortedIds);
 
+        final List<Integer> pathForLegend = highlightedPath;
         for (int id : sortedIds) {
             Station st = stations.get(id);
             JLabel item = new JLabel(String.format(" [%2d]  %s", st.id, st.name));
             item.setFont(new Font("Monospaced", Font.PLAIN, 11));
             item.setCursor(new Cursor(Cursor.HAND_CURSOR));
 
-            if (highlightedPath != null && highlightedPath.contains(id)) {
-                if (id == highlightedPath.get(0)) {
+            if (pathForLegend != null && pathForLegend.contains(id)) {
+                if (id == pathForLegend.get(0)) {
                     item.setForeground(new Color(34, 197, 94));
-                } else if (id == highlightedPath.get(highlightedPath.size() - 1)) {
+                } else if (id == pathForLegend.get(pathForLegend.size() - 1)) {
                     item.setForeground(new Color(249, 115, 22));
                 } else {
                     item.setForeground(new Color(239, 68, 68));
