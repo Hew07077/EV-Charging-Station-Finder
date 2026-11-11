@@ -6,7 +6,6 @@ import java.util.List;
 
 public class SELEVNetSystem {
 
-    // Structure representing an EV Station Node with Real-World Coordinates
     static class Station {
         int id;
         String name;
